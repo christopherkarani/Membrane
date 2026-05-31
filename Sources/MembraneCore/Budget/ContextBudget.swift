@@ -111,4 +111,8 @@ public struct ContextBudget: Sendable {
 
         buckets[bucket] = BucketAllocation(ceiling: allocation.ceiling)
     }
+
+    public var bucketAllocations: [BucketID: Int] {
+        Dictionary(uniqueKeysWithValues: buckets.map { ($0.key, $0.value.allocated) })
+    }
 }

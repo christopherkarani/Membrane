@@ -2,7 +2,7 @@ public protocol IntakeStage: MembraneStage where Input == ContextRequest, Output
 public protocol BudgetStage: MembraneStage where Input == ContextWindow, Output == BudgetedContext {}
 public protocol CompressStage: MembraneStage where Input == BudgetedContext, Output == CompressedContext {}
 public protocol PageStage: MembraneStage where Input == CompressedContext, Output == PagedContext {}
-public protocol EmitStage: MembraneStage where Input == PagedContext, Output == PlannedRequest {}
+public protocol EmitStage: MembraneStage where Input == PagedContext, Output == ContextPlan {}
 
 public struct BudgetedContext: Sendable {
     public let window: ContextWindow
@@ -54,7 +54,7 @@ public struct PagedContext: Sendable {
     }
 }
 
-public struct PlannedRequest: Sendable {
+public struct ContextPlan: Sendable {
     public let prompt: String
     public let systemPrompt: String
     public let toolPlan: ToolPlan
@@ -75,3 +75,5 @@ public struct PlannedRequest: Sendable {
         self.metadata = metadata
     }
 }
+
+public typealias PlannedRequest = ContextPlan

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Membrane
 import MembraneCore
@@ -9,71 +10,39 @@ public actor RAPTORWaxIndex: RAPTORIndex {
         static let nodeID = "membrane.raptor.id"
         static let parentID = "membrane.raptor.parent_id"
         static let depth = "membrane.raptor.depth"
-        static let tokenCount = "membrane.raptor.tokens"
+        static let tokenCount = "membrane.raptor.token_count"
 
-        static let raptorNodeKind = "raptorNode"
+        static let nodeKind = "raptorNode"
     }
 
-    public let session: WaxSession
+    private enum StorageFormat {
+        static let nodeMarker = "\n\n__raptor_node_json__\n"
+    }
 
-    private let compressionThresholdBytes: Int
-    private let compressionEncoding: CanonicalEncoding
-    private let waxLaneWeight: Float
-    private let heuristicLaneWeight: Float
+    public let memory: Wax.Memory
 
-    private var frameIDByNodeID: [String: UInt64] = [:]
-    private var nodeByFrameID: [UInt64: RAPTORNode] = [:]
-
-    public init(
-        session: WaxSession,
-        compressionThresholdBytes: Int = 4_096,
-        compressionEncoding: CanonicalEncoding = .deflate,
-        waxLaneWeight: Float = 0.7,
-        heuristicLaneWeight: Float = 0.3
-    ) {
-        self.session = session
-        self.compressionThresholdBytes = max(1, compressionThresholdBytes)
-        self.compressionEncoding = compressionEncoding
-        self.waxLaneWeight = max(0, waxLaneWeight)
-        self.heuristicLaneWeight = max(0, heuristicLaneWeight)
+    public init(memory: Wax.Memory) {
+        self.memory = memory
     }
 
     @discardableResult
     public func store(node: RAPTORNode) async throws -> UInt64 {
-        if let existingFrameID = try await frameID(forNodeID: node.id) {
-            return existingFrameID
-        }
-
-        var metadataEntries: [String: String] = [
-            MetadataKey.kind: MetadataKey.raptorNodeKind,
-            MetadataKey.nodeID: node.id,
-            MetadataKey.depth: String(node.depth),
-            MetadataKey.tokenCount: String(node.tokenCount),
-        ]
-        if let parentID = node.parentID {
-            metadataEntries[MetadataKey.parentID] = parentID
-        }
-        metadataEntries = metadataEntries.sorted(by: { $0.key < $1.key })
-            .reduce(into: [:]) { partial, pair in partial[pair.key] = pair.value }
-
-        let options = FrameMetaSubset(
-            kind: "membrane.raptorNode",
-            role: .document,
-            searchText: node.text,
-            metadata: Metadata(metadataEntries)
+        let encoded = try JSONEncoder().encode(node)
+        let text = Self.storedNodeDocument(node: node, encodedNode: encoded)
+        try await memory.save(
+            text,
+            metadata: [
+                MetadataKey.kind: MetadataKey.nodeKind,
+                MetadataKey.nodeID: node.id,
+                MetadataKey.parentID: node.parentID ?? "",
+                MetadataKey.depth: String(node.depth),
+                MetadataKey.tokenCount: String(node.tokenCount),
+            ]
         )
-        let payload = Data(node.text.utf8)
-        let compression: CanonicalEncoding = payload.count >= compressionThresholdBytes
-            ? compressionEncoding
-            : .plain
-        let frameID = try await session.put(payload, options: options, compression: compression)
-        try await session.commit()
-
-        frameIDByNodeID[node.id] = frameID
-        nodeByFrameID[frameID] = node
-        return frameID
+        return Self.syntheticFrameValue(for: node.id)
     }
 
+    @discardableResult
     public func store(nodes: [RAPTORNode]) async throws -> [UInt64] {
         var frameIDs: [UInt64] = []
         frameIDs.reserveCapacity(nodes.count)
@@ -83,172 +52,77 @@ public actor RAPTORWaxIndex: RAPTORIndex {
         return frameIDs
     }
 
-    public func frameMeta(forNodeID nodeID: String) async -> FrameMeta? {
-        do {
-            guard let frameID = try await frameID(forNodeID: nodeID) else {
+    public func search(query: String, topK: Int) async throws -> [RAPTORNode] {
+        let results = try await memory.search(
+            query,
+            options: .init(topK: max(1, topK * 3), includeSurrogates: false, mode: .textOnly)
+        )
+
+        let decodedNodes = results.items.compactMap { item -> (RAPTORNode, Float)? in
+            guard item.text.contains(StorageFormat.nodeMarker) else { return nil }
+            guard let node = Self.decodeNode(from: item.text) else {
                 return nil
             }
-            return try await session.wax.frameMeta(frameId: frameID)
-        } catch {
-            return nil
+            return (node, item.score)
         }
+
+        return decodedNodes
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 {
+                    return lhs.1 > rhs.1
+                }
+                if lhs.0.depth != rhs.0.depth {
+                    return lhs.0.depth < rhs.0.depth
+                }
+                return lhs.0.id < rhs.0.id
+            }
+            .prefix(max(0, topK))
+            .map(\.0)
     }
 
-    public func search(query: String, topK: Int) async throws -> [RAPTORNode] {
-        guard topK > 0 else {
-            return []
-        }
-
-        let allFrameIDs = try await allRaptorFrameIDs()
-        guard !allFrameIDs.isEmpty else {
-            return []
-        }
-
-        let filter = FrameFilter(frameIds: Set(allFrameIDs))
-        let waxResponse = try await session.search(
-            SearchRequest(
-                query: query,
-                mode: .textOnly,
-                topK: max(topK * 3, topK),
-                frameFilter: filter,
-                allowTimelineFallback: true,
-                timelineFallbackLimit: max(10, topK * 3)
-            )
+    public func node(forID nodeID: String) async throws -> RAPTORNode? {
+        let results = try await memory.search(
+            nodeID,
+            options: .init(topK: 20, includeSurrogates: false, mode: .textOnly)
         )
-        let waxRanked = waxResponse.results.map { $0.frameId }
-        let heuristicRanked = try await heuristicRankedFrameIDs(query: query, frameIDs: allFrameIDs)
-
-        let fused = HybridSearch.rrfFusion(
-            lists: [
-                (weight: waxLaneWeight, frameIds: waxRanked),
-                (weight: heuristicLaneWeight, frameIds: heuristicRanked),
-            ]
-        ).map { $0.0 }
-
-        var selected: [UInt64] = []
-        selected.reserveCapacity(topK)
-        var seen: Set<UInt64> = []
-        for frameID in fused where selected.count < topK {
-            if seen.insert(frameID).inserted {
-                selected.append(frameID)
-            }
-        }
-        for frameID in heuristicRanked where selected.count < topK {
-            if seen.insert(frameID).inserted {
-                selected.append(frameID)
-            }
-        }
-
-        var nodes: [RAPTORNode] = []
-        nodes.reserveCapacity(selected.count)
-        for frameID in selected {
-            if let node = try await node(forFrameID: frameID) {
-                nodes.append(node)
-            }
-        }
-        return nodes
-    }
-
-    private func allRaptorFrameIDs() async throws -> [UInt64] {
-        let metas = await session.wax.frameMetas()
-        var byNodeID: [String: UInt64] = [:]
-
-        for meta in metas where meta.status == .active && meta.supersededBy == nil {
-            guard let entries = meta.metadata?.entries else { continue }
-            guard entries[MetadataKey.kind] == MetadataKey.raptorNodeKind else { continue }
-            guard let nodeID = entries[MetadataKey.nodeID], !nodeID.isEmpty else { continue }
-
-            if let existing = byNodeID[nodeID] {
-                byNodeID[nodeID] = min(existing, meta.id)
-            } else {
-                byNodeID[nodeID] = meta.id
-            }
-        }
-
-        frameIDByNodeID = byNodeID
-        return byNodeID.values.sorted()
-    }
-
-    private func frameID(forNodeID nodeID: String) async throws -> UInt64? {
-        if let cached = frameIDByNodeID[nodeID] {
-            return cached
-        }
-
-        _ = try await allRaptorFrameIDs()
-        return frameIDByNodeID[nodeID]
-    }
-
-    private func heuristicRankedFrameIDs(query: String, frameIDs: [UInt64]) async throws -> [UInt64] {
-        let normalizedQuery = query.lowercased()
-        let queryTokens = normalizedQuery
-            .split(whereSeparator: { $0.isWhitespace || $0.isPunctuation })
-            .map(String.init)
-
-        var scored: [(frameID: UInt64, score: Int, depth: Int, nodeID: String)] = []
-        scored.reserveCapacity(frameIDs.count)
-
-        for frameID in frameIDs {
-            guard let node = try await node(forFrameID: frameID) else {
+        for item in results.items where item.text.hasPrefix(nodeID) {
+            guard let node = Self.decodeNode(from: item.text) else {
                 continue
             }
-            let text = node.text.lowercased()
-
-            var score = 0
-            if !normalizedQuery.isEmpty, text.contains(normalizedQuery) {
-                score += 4
-            }
-            for token in queryTokens where !token.isEmpty {
-                if text.contains(token) {
-                    score += 1
-                }
-            }
-
-            scored.append((frameID: frameID, score: score, depth: node.depth, nodeID: node.id))
+            return node
         }
-
-        return scored.sorted { lhs, rhs in
-            if lhs.score != rhs.score { return lhs.score > rhs.score }
-            if lhs.depth != rhs.depth { return lhs.depth < rhs.depth }
-            if lhs.nodeID != rhs.nodeID { return lhs.nodeID < rhs.nodeID }
-            return lhs.frameID < rhs.frameID
-        }.map { $0.frameID }
+        return nil
     }
 
-    private func node(forFrameID frameID: UInt64) async throws -> RAPTORNode? {
-        if let cached = nodeByFrameID[frameID] {
-            return cached
+    private static func syntheticFrameValue(for nodeID: String) -> UInt64 {
+        let digest = Data(SHA256.hash(data: Data(nodeID.utf8)))
+        let prefix = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+        return UInt64(prefix, radix: 16) ?? 0
+    }
+
+    private static func storedNodeDocument(node: RAPTORNode, encodedNode: Data) -> String {
+        let encodedPayload = encodedNode.base64EncodedString()
+        return """
+        \(node.id)
+        \(node.text)\(StorageFormat.nodeMarker)\(encodedPayload)
+        """
+    }
+
+    private static func decodeNode(from storedText: String) -> RAPTORNode? {
+        if let range = storedText.range(of: StorageFormat.nodeMarker) {
+            let encodedNode = storedText[range.upperBound...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let data = Data(base64Encoded: String(encodedNode)),
+               let node = try? JSONDecoder().decode(RAPTORNode.self, from: data) {
+                return node
+            }
         }
 
-        let meta = try await session.wax.frameMeta(frameId: frameID)
-        guard meta.status == .active, meta.supersededBy == nil else {
-            return nil
-        }
-        guard let entries = meta.metadata?.entries else {
-            return nil
-        }
-        guard entries[MetadataKey.kind] == MetadataKey.raptorNodeKind else {
-            return nil
-        }
-        guard let nodeID = entries[MetadataKey.nodeID], !nodeID.isEmpty else {
-            return nil
+        if let data = storedText.data(using: .utf8),
+           let node = try? JSONDecoder().decode(RAPTORNode.self, from: data) {
+            return node
         }
 
-        let textData = try await session.wax.frameContent(frameId: frameID)
-        let text = String(data: textData, encoding: .utf8) ?? ""
-        let depth = Int(entries[MetadataKey.depth] ?? "") ?? 0
-        let tokenCount = Int(entries[MetadataKey.tokenCount] ?? "")
-            ?? max(1, text.count / 4)
-        let parentID = entries[MetadataKey.parentID]
-
-        let node = RAPTORNode(
-            id: nodeID,
-            parentID: parentID?.isEmpty == false ? parentID : nil,
-            depth: depth,
-            text: text,
-            tokenCount: tokenCount
-        )
-        nodeByFrameID[frameID] = node
-        frameIDByNodeID[nodeID] = frameID
-        return node
+        return nil
     }
 }

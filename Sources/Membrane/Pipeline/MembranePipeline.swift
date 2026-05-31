@@ -70,13 +70,13 @@ public actor MembranePipeline {
         )
     }
 
-    public func prepare(_ request: ContextRequest) async throws -> PlannedRequest {
+    public func prepare(_ request: ContextRequest) async throws -> ContextPlan {
         var budget = baseBudget
 
         var window = ContextWindow(
             systemPrompt: ContextSlice(
-                content: "",
-                tokenCount: 0,
+                content: request.systemPrompt,
+                tokenCount: request.systemPrompt.count,
                 importance: 1.0,
                 source: .system,
                 tier: .full,
@@ -88,7 +88,7 @@ public actor MembranePipeline {
             history: request.history,
             retrieval: request.retrieval,
             pointers: request.pointers,
-            metadata: ContextMetadata(modelProfile: .foundationModels4K)
+            metadata: request.metadata
         )
 
         if let intakeStage {
@@ -131,8 +131,8 @@ public actor MembranePipeline {
         }
         budget = paged.budget
 
-        var plannedRequest = PlannedRequest(
-            prompt: request.userInput,
+        var plannedRequest = ContextPlan(
+            prompt: request.basePrompt.isEmpty ? request.userInput : request.basePrompt,
             systemPrompt: paged.window.systemPrompt.content,
             toolPlan: paged.window.toolPlan,
             budget: budget,

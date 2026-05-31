@@ -1,8 +1,8 @@
 import Foundation
 import Testing
-@testable import MembraneHive
+@testable import MembraneCheckpoint
 
-@Suite struct MembraneHiveBootstrapTests {
+@Suite struct MembraneCheckpointBootstrapTests {
     @Test func moduleImports() {
         #expect(MembraneCheckpointAdapter.self is Any.Type)
     }

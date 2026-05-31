@@ -11,10 +11,10 @@ public struct ContextSlice: Sendable, Equatable {
     public init(
         content: String,
         tokenCount: Int,
-        importance: Double,
+        importance: Double = 0.8,
         source: ContextSource,
-        tier: CompressionTier,
-        timestamp: ContinuousClock.Instant
+        tier: CompressionTier = .full,
+        timestamp: ContinuousClock.Instant = .now
     ) {
         self.content = content
         self.tokenCount = tokenCount

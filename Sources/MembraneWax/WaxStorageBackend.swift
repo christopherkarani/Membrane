@@ -3,82 +3,64 @@ import Foundation
 import MembraneCore
 import Wax
 
-public actor WaxStorageBackend: PointerStore {
+public actor WaxStorageBackend: PointerStore, ContextRecallStore {
     private enum MetadataKey {
         static let kind = "membrane.kind"
         static let pointerID = "membrane.pointer.id"
         static let pointerSHA256 = "membrane.pointer.sha256"
         static let pointerDataType = "membrane.pointer.dataType"
+        static let payloadEncoding = "membrane.pointer.payloadEncoding"
+        static let summary = "membrane.pointer.summary"
 
+        static let contextFrame = "contextFrame"
         static let pointerPayloadKind = "pointerPayload"
     }
 
-    public let session: WaxSession
-
-    private let compressionThresholdBytes: Int
-    private let compressionEncoding: CanonicalEncoding
-    private var pointerFrameIDByID: [String: UInt64] = [:]
-
-    public init(
-        session: WaxSession,
-        compressionThresholdBytes: Int = 4_096,
-        compressionEncoding: CanonicalEncoding = .deflate
-    ) {
-        self.session = session
-        self.compressionThresholdBytes = max(1, compressionThresholdBytes)
-        self.compressionEncoding = compressionEncoding
+    private enum StorageFormat {
+        static let payloadMarker = "\n\n__payload_base64__\n"
     }
 
-    public static func create(
-        at url: URL,
-        sessionConfig: WaxSession.Config = .default,
-        compressionThresholdBytes: Int = 4_096,
-        compressionEncoding: CanonicalEncoding = .deflate
-    ) async throws -> WaxStorageBackend {
-        let wax = try await Wax.create(at: url)
-        let session = try await WaxSession(
-            wax: wax,
-            mode: .readWrite(.wait),
-            config: sessionConfig
-        )
-        return WaxStorageBackend(
-            session: session,
-            compressionThresholdBytes: compressionThresholdBytes,
-            compressionEncoding: compressionEncoding
-        )
+    public let memory: Wax.Memory
+    private var cachedPayloads: [String: Data] = [:]
+
+    public init(memory: Wax.Memory) {
+        self.memory = memory
+    }
+
+    public static func create(at url: URL) async throws -> WaxStorageBackend {
+        let memory = try await Wax.Memory(at: url)
+        return WaxStorageBackend(memory: memory)
     }
 
     public func close() async throws {
-        await session.close()
-        try await session.wax.close()
+        try await memory.close()
     }
 
     public func store(payload: Data, dataType: MemoryPointer.DataType, summary: String) async throws -> MemoryPointer {
         let pointerID = Self.pointerID(for: payload)
+        let encodedPayload = payload.base64EncodedString()
         let sha256 = Self.sha256Hex(payload)
-
-        var metadataEntries: [String: String] = [
-            MetadataKey.kind: MetadataKey.pointerPayloadKind,
-            MetadataKey.pointerID: pointerID,
-            MetadataKey.pointerSHA256: sha256,
-            MetadataKey.pointerDataType: dataType.rawValue,
-        ]
-        metadataEntries = metadataEntries.sorted(by: { $0.key < $1.key })
-            .reduce(into: [:]) { partial, pair in partial[pair.key] = pair.value }
-
-        let options = FrameMetaSubset(
-            kind: "membrane.pointerPayload",
-            role: .blob,
-            searchText: summary,
-            metadata: Metadata(metadataEntries)
+        let searchableText = Self.searchablePayloadText(payload: payload, summary: summary)
+        let storedDocument = Self.storedPointerDocument(
+            pointerID: pointerID,
+            summary: summary,
+            searchableText: searchableText,
+            encodedPayload: encodedPayload
         )
-        let compression: CanonicalEncoding = payload.count >= compressionThresholdBytes
-            ? compressionEncoding
-            : .plain
-        let frameID = try await session.put(payload, options: options, compression: compression)
-        try await session.commit()
 
-        pointerFrameIDByID[pointerID] = frameID
+        try await memory.save(
+            storedDocument,
+            metadata: [
+                MetadataKey.kind: MetadataKey.pointerPayloadKind,
+                MetadataKey.pointerID: pointerID,
+                MetadataKey.pointerSHA256: sha256,
+                MetadataKey.pointerDataType: dataType.rawValue,
+                MetadataKey.payloadEncoding: "base64",
+                MetadataKey.summary: summary,
+            ]
+        )
+
+        cachedPayloads[pointerID] = payload
         return MemoryPointer(
             id: pointerID,
             dataType: dataType,
@@ -88,116 +70,101 @@ public actor WaxStorageBackend: PointerStore {
     }
 
     public func resolve(pointerID: String) async throws -> Data {
-        guard let frameID = try await frameID(forPointerID: pointerID) else {
+        if let cached = cachedPayloads[pointerID] {
+            return cached
+        }
+
+        let results = try await memory.search(
+            pointerID,
+            options: .init(topK: 20, includeSurrogates: false, mode: .textOnly)
+        )
+        guard let item = results.items.first(where: {
+            $0.text.contains("pointer_id: \(pointerID)")
+                && $0.text.contains(StorageFormat.payloadMarker)
+        }) else {
             throw MembraneError.pointerResolutionFailed(pointerID: pointerID)
         }
-        return try await session.wax.frameContent(frameId: frameID)
+
+        let payload = Self.decodedPayload(from: item.text) ?? Data(item.text.utf8)
+        cachedPayloads[pointerID] = payload
+        return payload
     }
 
     public func delete(pointerID: String) async {
-        do {
-            guard let frameID = try await frameID(forPointerID: pointerID) else {
-                return
-            }
-            try await session.wax.delete(frameId: frameID)
-            try await session.commit()
-            pointerFrameIDByID[pointerID] = nil
-        } catch {
-            // Pointer deletion is best-effort to match PointerStore's non-throwing contract.
-        }
+        cachedPayloads[pointerID] = nil
     }
 
+    @discardableResult
     public func storeContextFrame(_ text: String) async throws -> UInt64 {
-        let options = FrameMetaSubset(
-            kind: "membrane.context",
-            role: .document,
-            searchText: text
+        try await memory.save(
+            text,
+            metadata: [
+                MetadataKey.kind: MetadataKey.contextFrame,
+                "membrane.frame.id": Self.syntheticFrameID(for: text),
+            ]
         )
-        let frameID = try await session.put(Data(text.utf8), options: options, compression: .plain)
-        try await session.commit()
-        return frameID
+        return Self.syntheticFrameValue(for: text)
     }
 
     public func searchRAG(
         query: String,
         topK: Int,
         includePointerPayloads: Bool = false
-    ) async throws -> SearchResponse {
-        let filter = await frameFilterForRAG(includePointerPayloads: includePointerPayloads)
-        let request = SearchRequest(
-            query: query,
-            mode: .textOnly,
-            topK: max(1, topK),
-            frameFilter: filter,
-            allowTimelineFallback: true,
-            timelineFallbackLimit: max(10, topK)
+    ) async throws -> Wax.Memory.Results {
+        let results = try await memory.search(
+            query,
+            options: .init(topK: max(1, topK), includeSurrogates: false, mode: .textOnly)
         )
-        return try await session.search(request)
+        guard includePointerPayloads else {
+            return Wax.Memory.Results(
+                query: results.query,
+                items: results.items.filter { !$0.text.contains(StorageFormat.payloadMarker) },
+                totalTokens: results.totalTokens
+            )
+        }
+        return results
     }
 
-    public func frameMeta(forPointerID pointerID: String) async -> FrameMeta? {
-        do {
-            guard let frameID = try await frameID(forPointerID: pointerID) else {
-                return nil
-            }
-            return try await session.wax.frameMeta(frameId: frameID)
-        } catch {
+    public func recall(query: String, limit: Int) async throws -> [ContextRecallCandidate] {
+        let results = try await searchRAG(query: query, topK: limit, includePointerPayloads: true)
+        return results.items.map { item in
+            let kind = item.text.contains(StorageFormat.payloadMarker)
+                ? MetadataKey.pointerPayloadKind
+                : MetadataKey.contextFrame
+            return ContextRecallCandidate(
+                content: item.text,
+                score: Double(item.score),
+                provenance: ContextProvenance(
+                    backendID: "wax",
+                    recordID: String(item.frameId),
+                    kind: kind,
+                    metadata: [:]
+                )
+            )
+        }
+    }
+
+    public func makeRAPTORIndex() -> RAPTORWaxIndex {
+        RAPTORWaxIndex(memory: memory)
+    }
+
+    public func provenance(forPointerID pointerID: String) async throws -> ContextProvenance? {
+        let results = try await memory.search(
+            pointerID,
+            options: .init(topK: 20, includeSurrogates: false, mode: .textOnly)
+        )
+        guard let item = results.items.first(where: {
+            $0.text.contains("pointer_id: \(pointerID)")
+                && $0.text.contains(StorageFormat.payloadMarker)
+        }) else {
             return nil
         }
-    }
-
-    public func frameMetas(frameIDs: [UInt64]) async -> [UInt64: FrameMeta] {
-        await session.wax.frameMetas(frameIds: frameIDs)
-    }
-
-    public func makeRAPTORIndex(
-        compressionThresholdBytes: Int = 4_096,
-        compressionEncoding: CanonicalEncoding = .deflate
-    ) -> RAPTORWaxIndex {
-        RAPTORWaxIndex(
-            session: session,
-            compressionThresholdBytes: compressionThresholdBytes,
-            compressionEncoding: compressionEncoding
+        return ContextProvenance(
+            backendID: "wax",
+            recordID: String(item.frameId),
+            kind: MetadataKey.pointerPayloadKind,
+            metadata: [:]
         )
-    }
-
-    private func frameID(forPointerID pointerID: String) async throws -> UInt64? {
-        if let frameID = pointerFrameIDByID[pointerID] {
-            return frameID
-        }
-
-        let metas = await session.wax.frameMetas()
-        var newest: UInt64?
-        for meta in metas where meta.status == .active {
-            guard let entries = meta.metadata?.entries else { continue }
-            guard entries[MetadataKey.kind] == MetadataKey.pointerPayloadKind else { continue }
-            guard entries[MetadataKey.pointerID] == pointerID else { continue }
-            if let current = newest {
-                newest = max(current, meta.id)
-            } else {
-                newest = meta.id
-            }
-        }
-
-        if let newest {
-            pointerFrameIDByID[pointerID] = newest
-        }
-        return newest
-    }
-
-    private func frameFilterForRAG(includePointerPayloads: Bool) async -> FrameFilter {
-        let metas = await session.wax.frameMetas()
-        var includedFrameIDs: Set<UInt64> = []
-        includedFrameIDs.reserveCapacity(metas.count)
-
-        for meta in metas where meta.status == .active && meta.supersededBy == nil {
-            let kind = meta.metadata?.entries[MetadataKey.kind]
-            if includePointerPayloads || kind != MetadataKey.pointerPayloadKind {
-                includedFrameIDs.insert(meta.id)
-            }
-        }
-
-        return FrameFilter(frameIds: includedFrameIDs)
     }
 
     private static func pointerID(for payload: Data) -> String {
@@ -207,5 +174,45 @@ public actor WaxStorageBackend: PointerStore {
 
     private static func sha256Hex(_ payload: Data) -> String {
         SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func syntheticFrameID(for text: String) -> String {
+        "frame_" + sha256Hex(Data(text.utf8)).prefix(16)
+    }
+
+    private static func syntheticFrameValue(for text: String) -> UInt64 {
+        let digest = sha256Hex(Data(text.utf8))
+        return UInt64(String(digest.prefix(16)), radix: 16) ?? 0
+    }
+
+    private static func searchablePayloadText(payload: Data, summary: String) -> String {
+        guard let decoded = String(data: payload, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            decoded.isEmpty == false else {
+            return summary
+        }
+        return decoded
+    }
+
+    private static func storedPointerDocument(
+        pointerID: String,
+        summary: String,
+        searchableText: String,
+        encodedPayload: String
+    ) -> String {
+        """
+        pointer_id: \(pointerID)
+        summary: \(summary)
+        \(searchableText)\(StorageFormat.payloadMarker)\(encodedPayload)
+        """
+    }
+
+    private static func decodedPayload(from storedText: String) -> Data? {
+        if let range = storedText.range(of: StorageFormat.payloadMarker) {
+            let encodedPayload = storedText[range.upperBound...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return Data(base64Encoded: String(encodedPayload))
+        }
+        return Data(base64Encoded: storedText)
     }
 }

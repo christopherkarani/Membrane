@@ -1,7 +1,6 @@
 import Foundation
-import MembraneCore
 
-public struct MembraneCheckpointState: Sendable, Codable, Equatable {
+public struct ContextSnapshot: Sendable, Codable, Equatable {
     private enum Bounds {
         static let maxBudgetAllocations = 64
         static let maxLoadedToolNames = 128
@@ -93,22 +92,28 @@ public struct MembraneCheckpointState: Sendable, Codable, Equatable {
     public let pagingCursor: PagingCursor?
     public let toolState: ToolState
     public let pointerIDs: [String]
+    public let backendID: String?
+    public let backendState: Data?
 
     public init(
         budget: BudgetSnapshot,
         csoSummaries: [String] = [],
         pagingCursor: PagingCursor? = nil,
         toolState: ToolState,
-        pointerIDs: [String] = []
+        pointerIDs: [String] = [],
+        backendID: String? = nil,
+        backendState: Data? = nil
     ) {
         self.budget = budget
         self.csoSummaries = csoSummaries
         self.pagingCursor = pagingCursor
         self.toolState = toolState
         self.pointerIDs = pointerIDs
+        self.backendID = backendID
+        self.backendState = backendState
     }
 
-    public func normalized() -> MembraneCheckpointState {
+    public func normalized() -> ContextSnapshot {
         let normalizedAllocations = budget.allocations
             .sorted { lhs, rhs in
                 if lhs.bucketID != rhs.bucketID {
@@ -143,7 +148,7 @@ public struct MembraneCheckpointState: Sendable, Codable, Equatable {
             usageCounts: normalizedUsageCounts
         )
 
-        return MembraneCheckpointState(
+        return ContextSnapshot(
             budget: BudgetSnapshot(
                 totalTokens: budget.totalTokens,
                 allocations: normalizedAllocations,
@@ -154,55 +159,48 @@ public struct MembraneCheckpointState: Sendable, Codable, Equatable {
             csoSummaries: Self.sortedUnique(csoSummaries, limit: Bounds.maxCSOSummaries),
             pagingCursor: pagingCursor,
             toolState: normalizedToolState,
-            pointerIDs: Self.sortedUnique(pointerIDs, limit: Bounds.maxPointerIDs)
+            pointerIDs: Self.sortedUnique(pointerIDs, limit: Bounds.maxPointerIDs),
+            backendID: backendID,
+            backendState: backendState
         )
     }
 
     private static func sortedUnique(_ values: [String], limit: Int) -> [String] {
-        let unique = Set(values)
-        return unique.sorted().prefix(limit).map { $0 }
+        Array(Set(values)).sorted().prefix(limit).map { $0 }
     }
 }
 
-public enum MembraneCheckpointCodec {
-    public static func encode(_ state: MembraneCheckpointState?) throws -> Data? {
-        guard let state else {
-            return nil
-        }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(state.normalized())
-    }
+public struct ContextProvenance: Sendable, Codable, Equatable {
+    public let backendID: String
+    public let recordID: String
+    public let kind: String
+    public let metadata: [String: String]
 
-    public static func decode(_ data: Data?) throws -> MembraneCheckpointState? {
-        guard let data else {
-            return nil
-        }
-        let decoded = try JSONDecoder().decode(MembraneCheckpointState.self, from: data)
-        return decoded.normalized()
+    public init(
+        backendID: String,
+        recordID: String,
+        kind: String,
+        metadata: [String: String] = [:]
+    ) {
+        self.backendID = backendID
+        self.recordID = recordID
+        self.kind = kind
+        self.metadata = metadata
     }
 }
 
-public actor MembraneCheckpointAdapter {
-    private var state: MembraneCheckpointState?
+public struct ContextRecallCandidate: Sendable, Codable, Equatable {
+    public let content: String
+    public let score: Double?
+    public let provenance: ContextProvenance
 
-    public init(initialState: MembraneCheckpointState? = nil) {
-        state = initialState?.normalized()
+    public init(content: String, score: Double? = nil, provenance: ContextProvenance) {
+        self.content = content
+        self.score = score
+        self.provenance = provenance
     }
+}
 
-    public func restore(from checkpointData: Data?) throws {
-        state = try MembraneCheckpointCodec.decode(checkpointData)
-    }
-
-    public func replaceState(_ newState: MembraneCheckpointState?) {
-        state = newState?.normalized()
-    }
-
-    public func currentState() -> MembraneCheckpointState? {
-        state
-    }
-
-    public func checkpointData() throws -> Data? {
-        try MembraneCheckpointCodec.encode(state)
-    }
+public protocol ContextRecallStore: Sendable {
+    func recall(query: String, limit: Int) async throws -> [ContextRecallCandidate]
 }

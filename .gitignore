@@ -1,5 +1,6 @@
 .DS_Store
 .build/
+.build-codex/
 .swiftpm/
 docs/reference/api-surface-catalog.md
 docs/reference/api-improvement-report.md

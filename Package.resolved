@@ -1,57 +1,40 @@
 {
-  "originHash" : "d907b269ef3012536b9f21346d15073c122792b446dad6f907b209701ab8ae8c",
+  "originHash" : "70fa0d54754007ff6da0beb9a9843c29e845040e9d45c38adab9b5459f12e4d7",
   "pins" : [
+    {
+      "identity" : "conduit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/christopherkarani/Conduit",
+      "state" : {
+        "revision" : "c79c68ff17075021ba59c77c439a1d6904a0d3a7",
+        "version" : "0.3.17"
+      }
+    },
+    {
+      "identity" : "contextcore",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/christopherkarani/ContextCore.git",
+      "state" : {
+        "revision" : "96713f7f11abf29ef9f8f5ed52e32324883351b5",
+        "version" : "0.1.0"
+      }
+    },
     {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/groue/GRDB.swift.git",
       "state" : {
-        "revision" : "2cf6c756e1e5ef6901ebae16576a7e4e4b834622",
-        "version" : "6.29.3"
+        "revision" : "36e30a6f1ef10e4194f6af0cff90888526f0c115",
+        "version" : "7.10.0"
       }
     },
     {
-      "identity" : "gzipswift",
+      "identity" : "metalanns",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1024jp/GzipSwift",
+      "location" : "https://github.com/christopherkarani/MetalANNS.git",
       "state" : {
-        "revision" : "731037f6cc2be2ec01562f6597c1d0aa3fe6fd05",
-        "version" : "6.0.1"
-      }
-    },
-    {
-      "identity" : "hive",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/christopherkarani/Hive",
-      "state" : {
-        "revision" : "f90e42bd1fdf5dce6b669fb900f0d417d70a6bef",
-        "version" : "0.1.6"
-      }
-    },
-    {
-      "identity" : "mlx-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift",
-      "state" : {
-        "revision" : "072b684acaae80b6a463abab3a103732f33774bf",
-        "version" : "0.29.1"
-      }
-    },
-    {
-      "identity" : "mlx-swift-examples",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift-examples.git",
-      "state" : {
-        "revision" : "fc3afc7cdbc4b6120d210c4c58c6b132ce346775"
-      }
-    },
-    {
-      "identity" : "mlx-swift-lm",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift-lm.git",
-      "state" : {
-        "revision" : "5064b8c5d8ed3b0bbb71385c4124f0fc102e74a2",
-        "version" : "2.29.3"
+        "revision" : "ea4586fff3f89fd655529927688aa910a85ed641",
+        "version" : "0.1.3"
       }
     },
     {
@@ -59,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-asn1.git",
       "state" : {
-        "revision" : "810496cf121e525d660cd0ea89a758740476b85f",
-        "version" : "1.5.1"
+        "revision" : "9f542610331815e29cc3821d3b6f488db8715517",
+        "version" : "1.6.0"
       }
     },
     {
@@ -118,21 +101,12 @@
       }
     },
     {
-      "identity" : "swift-tiktoken",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/DePasqualeOrg/swift-tiktoken.git",
-      "state" : {
-        "revision" : "e088d534d80dd1875ca3edfd69a16a6c25ab84c4",
-        "version" : "0.0.1"
-      }
-    },
-    {
       "identity" : "swift-transformers",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/huggingface/swift-transformers",
       "state" : {
-        "revision" : "f3d5cbfa653dd248ae8c92313453d5fdcfdf049e",
-        "version" : "1.1.8"
+        "revision" : "150169bfba0889c229a2ce7494cf8949f18e6906",
+        "version" : "1.1.9"
       }
     },
     {
@@ -142,6 +116,15 @@
       "state" : {
         "revision" : "40d127f472e9073875566f0e9308c0302b89100a",
         "version" : "2.24.0"
+      }
+    },
+    {
+      "identity" : "wax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/christopherkarani/Wax.git",
+      "state" : {
+        "revision" : "5e64ac8b158b91c7509d5834934a2c37dfafa993",
+        "version" : "0.1.18"
       }
     },
     {

@@ -415,8 +415,7 @@ Membrane is organized into focused modules:
 |--------|---------|-------------|
 | **MembraneCore** | Types, protocols, budget algebra | swift-collections |
 | **Membrane** | Pipeline orchestrator + built-in stages | MembraneCore |
-| **MembraneWax** | Persistent storage via [Wax](https://github.com/christopherkarani/Wax), including RAPTOR index and pointer store | Membrane, Wax |
-| **MembraneConduit** | Token counting via [Conduit](https://github.com/christopherkarani/Conduit) | Membrane, Conduit |
+| **MembraneContextCore** | ContextCore backend integration | MembraneCore, ContextCore |
 
 ---
 
@@ -676,7 +675,7 @@ swift build
 swift test
 
 # Run specific test suite
-swift test --filter MembraneWaxTests
+swift test --filter MembraneTests
 ```
 
 ---

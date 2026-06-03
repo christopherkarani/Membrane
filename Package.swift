@@ -13,29 +13,10 @@ var dependencies: [Package.Dependency] = [
 if useLocalDeps {
     dependencies += [
         .package(path: packageRoot.appendingPathComponent("../ContextCore").path),
-        .package(
-            path: packageRoot.appendingPathComponent("../Conduit").path,
-            traits: [
-                .trait(name: "OpenAI"),
-                .trait(name: "OpenRouter"),
-                .trait(name: "Anthropic"),
-            ]
-        ),
-        .package(path: packageRoot.appendingPathComponent("../Wax").path),
     ]
 } else {
     dependencies += [
         .package(url: "https://github.com/christopherkarani/ContextCore.git", from: "1.0.0"),
-        .package(
-            url: "https://github.com/christopherkarani/Conduit",
-            from: "0.3.17",
-            traits: [
-                .trait(name: "OpenAI"),
-                .trait(name: "OpenRouter"),
-                .trait(name: "Anthropic"),
-            ]
-        ),
-        .package(url: "https://github.com/christopherkarani/Wax.git", from: "0.1.19"),
     ]
 }
 
@@ -46,8 +27,6 @@ let package = Package(
         .library(name: "MembraneCore", targets: ["MembraneCore"]),
         .library(name: "Membrane", targets: ["Membrane"]),
         .library(name: "MembraneContextCore", targets: ["MembraneContextCore"]),
-        .library(name: "MembraneWax", targets: ["MembraneWax"]),
-        .library(name: "MembraneConduit", targets: ["MembraneConduit"]),
     ],
     dependencies: dependencies,
     targets: [
@@ -74,22 +53,6 @@ let package = Package(
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
-        .target(
-            name: "MembraneWax",
-            dependencies: [
-                "Membrane",
-                .product(name: "Wax", package: "Wax"),
-            ],
-            swiftSettings: [.swiftLanguageMode(.v6)]
-        ),
-        .target(
-            name: "MembraneConduit",
-            dependencies: [
-                "Membrane",
-                .product(name: "Conduit", package: "Conduit"),
-            ],
-            swiftSettings: [.swiftLanguageMode(.v6)]
-        ),
         .testTarget(
             name: "MembraneCoreTests",
             dependencies: ["MembraneCore"]
@@ -97,14 +60,6 @@ let package = Package(
         .testTarget(
             name: "MembraneTests",
             dependencies: ["Membrane"]
-        ),
-        .testTarget(
-            name: "MembraneWaxTests",
-            dependencies: ["MembraneWax"]
-        ),
-        .testTarget(
-            name: "MembraneConduitTests",
-            dependencies: ["MembraneConduit"]
         ),
     ]
 )

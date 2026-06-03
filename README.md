@@ -9,11 +9,11 @@
 # Membrane
 
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-orange?logo=swift&logoColor=white)](https://swift.org)
-[![Platform](https://img.shields.io/badge/Platform-macOS_26%2B_%7C_iOS_26%2B-black?logo=apple&logoColor=white)](https://developer.apple.com/apple-intelligence/)
+[![Platform](https://img.shields.io/badge/Platform-macOS_15%2B_%7C_iOS_18%2B-black?logo=apple&logoColor=white)](https://developer.apple.com/apple-intelligence/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/christopherkarani/Membrane?style=flat&color=gray)](https://github.com/christopherkarani/Membrane/stargazers)
 
-**Never lose a conversation again.** Membrane is an intelligent context pipeline for Swift that automatically budgets, compresses, and pages your LLM content so the important stuff always fits — no matter how long the chat gets.
+**An actor-based context pipeline for Swift.** Membrane intelligently manages LLM context by budgeting, compressing, and paging content to fit within model context windows.
 
 [English](README.md) | [Español](locales/README.es.md) | [日本語](locales/README.ja.md) | [中文](locales/README.zh-CN.md)
 
@@ -21,95 +21,83 @@
 
 ---
 
-## The Problem
+## Why Membrane?
 
-You're building an AI app. Your user has been chatting for 50 turns. They mention a critical detail in turn 3. Now they're asking about it in turn 51.
+Large language models have finite context windows. When you're building an AI-powered app, you face a constant challenge: system prompts, conversation history, long-term memory, tool definitions, and retrieved data all compete for the same limited space.
 
-**Without Membrane, you have three bad options:**
+**The problem with naive approaches:**
+- **Truncation** discards useful context, losing important conversation history or memory
+- **Overstuffing** hurts output quality and wastes tokens on less relevant content
+- **Fixed limits** don't adapt to different query types or model capabilities
 
-| Approach | What Happens |
-|----------|-------------|
-| **Truncate** | Chop off old messages. The detail from turn 3 is gone. |
-| **Overstuff** | cram everything in. The model gets confused, quality drops, tokens burn. |
-| **Guess** | Hand-write heuristic limits. Brittle, unmaintainable, wrong half the time. |
-
-Every one of these breaks the illusion of intelligence your user expects.
-
-## The Membrane Difference
-
-Membrane treats your context window like memory management: it decides what stays hot, what gets compressed, and what gets paged out — automatically, deterministically, and tuned to your model.
-
-```swift
-// Before: You manually guess what fits
-let messages = [system, ...recentHistory, userMessage]
-// Oops. 50 turns of history + memories + documents = 12K tokens.
-// Your 4K model chokes. You truncate. User is confused why the AI forgot.
-
-// After: Membrane decides for you
-let plan = try await pipeline.prepare(request)
-// Exactly 4K tokens. Recent history preserved. Old history compressed.
-// Memories ranked by relevance. Documents retrieved within budget.
-// User gets a coherent answer. Every time.
-```
+**Membrane solves this** with an intelligent 5-stage pipeline that automatically decides what stays in context, what gets compressed, and what gets paged out — all while maintaining deterministic, reproducible behavior.
 
 ---
 
-## 30-Second Quick Start
+## Quick Start
 
-### Add the dependency
+### Installation
+
+Add Membrane to your `Package.swift`:
 
 ```swift
-// Package.swift
 dependencies: [
     .package(url: "https://github.com/christopherkarani/Membrane", from: "1.0.0"),
 ]
 ```
 
-### Run your first pipeline
+### Your First Pipeline
+
+Here's a complete example of using Membrane to prepare context for inference:
 
 ```swift
 import Membrane
 import MembraneCore
 
-let pipeline = MembranePipeline.foundationModel()
-
-let request = ContextRequest(
-    systemPrompt: "You are a helpful assistant.",
-    userInput: "What was decided in the last meeting?",
-    history: [
-        ContextSlice(content: "User: We need to schedule the launch", tokenCount: 8, source: .history),
-        ContextSlice(content: "Assistant: I'll help you plan it", tokenCount: 10, source: .history),
-    ],
-    memories: [
-        ContextSlice(content: "Product launch scheduled for March 15", tokenCount: 7, source: .memory, tier: .gist),
-    ]
+// 1. Create a budget for your model
+// Choose a profile that matches your model's context window
+let budget = ContextBudget(
+    totalTokens: 4096,
+    profile: .foundationModels4K  // For Apple Foundation Models (4K tokens)
 )
 
-let plan = try await pipeline.prepare(request)
-print(plan.prompt)   // Optimized prompt, perfectly within budget
+// 2. Build a context request with your app's data
+let request = ContextRequest(
+    systemPrompt: "You are a helpful assistant.",
+    basePrompt: "",
+    userInput: "What was decided in the last meeting?",
+    tools: [],
+    toolPlan: .allowAll,
+    history: [
+        ContextSlice(content: "User: We need to schedule the launch", tokenCount: 8, importance: 0.9, source: .history, tier: .full),
+        ContextSlice(content: "Assistant: I'll help you plan it", tokenCount: 10, importance: 0.8, source: .history, tier: .full),
+    ],
+    memories: [
+        ContextSlice(content: "Product launch scheduled for March 15", tokenCount: 7, importance: 0.7, source: .memory, tier: .gist),
+    ],
+    retrieval: [],
+    pointers: [],
+    metadata: ContextMetadata(),
+    recallQuery: nil,
+    recallLimit: 3
+)
+
+// 3. Create and run the pipeline
+let pipeline = MembranePipeline.foundationModel(budget: budget)
+
+let result = try await pipeline.prepare(request)
+
+print("Prompt: \(result.plan.prompt)")
+print("Tokens used: \(result.plan.budget.used)")
 ```
-
-That's it. Membrane allocated tokens across system prompt, history, and memories automatically. It compressed the memory into a gist. It made sure everything fit.
-
----
-
-## What You Can Build
-
-Membrane shines when context matters. Here are a few places it transforms an okay AI feature into an unforgettable one:
-
-| Use Case | What Membrane Does |
-|----------|-------------------|
-| **Long-form companion** | Keep months of conversation history. Older turns compress to summaries; recent turns stay full-fidelity. The AI never feels like it has amnesia. |
-| **Agent with tools** | Register 20+ tools. Membrane JIT-loads only the relevant ones per turn, keeping tool definitions within budget. |
-| **RAG chatbot** | Retrieve 20 documents. Membrane ranks them by importance and evicts the least relevant ones instead of blindly stuffing them all in. |
-| **Memory-augmented assistant** | Inject personal facts, preferences, and background. Membrane budgets memory separately from conversation so neither starves the other. |
-| **On-device Apple Intelligence** | Runs on Apple Silicon with KV-cache awareness. Fits large context into limited unified memory without thrashing. |
 
 ---
 
 ## How It Works
 
-Membrane runs your context through a **5-stage actor-isolated pipeline**. Each stage is independent, thread-safe, and deterministic.
+### The Pipeline Architecture
+
+Membrane uses a **5-stage actor-isolated pipeline**. Each stage runs independently with no shared mutable state, ensuring thread-safety and deterministic behavior.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -164,12 +152,16 @@ Membrane runs your context through a **5-stage actor-isolated pipeline**. Each s
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Every stage conforms to the same protocol:
+### Stage Protocol
+
+Every stage conforms to the same actor-based protocol:
 
 ```swift
 public protocol MembraneStage: Actor, Sendable {
     associatedtype Input: Sendable
     associatedtype Output: Sendable
+
+    /// Processes the input within the allocated budget.
     func process(_ input: Input, budget: ContextBudget) async throws -> Output
 }
 ```
@@ -180,7 +172,7 @@ public protocol MembraneStage: Actor, Sendable {
 
 ### 1. Token Budget Algebra
 
-Tokens are partitioned across **9 domain buckets**, each with its own ceiling:
+Tokens are partitioned across **9 domain buckets**, each with independent ceilings:
 
 | Bucket | Purpose |
 |--------|---------|
@@ -307,7 +299,7 @@ Membrane ships with production-ready stages for each pipeline phase:
 
 ## Complete Usage Example
 
-Here's a comprehensive example showing how to use Membrane in a real application:
+Here's a more comprehensive example showing how to use Membrane in a real application:
 
 ```swift
 import Membrane
@@ -424,7 +416,7 @@ Membrane is organized into focused modules:
 | **MembraneCore** | Types, protocols, budget algebra | swift-collections |
 | **Membrane** | Pipeline orchestrator + built-in stages | MembraneCore |
 | **MembraneWax** | Persistent storage via [Wax](https://github.com/christopherkarani/Wax), including RAPTOR index and pointer store | Membrane, Wax |
-| **MembraneCheckpoint** | JSON checkpoint and restore for pipeline state | Membrane |
+| **MembraneHive** | Checkpoint and restore via [Hive](https://github.com/christopherkarani/Hive) | Membrane, HiveCore |
 | **MembraneConduit** | Token counting via [Conduit](https://github.com/christopherkarani/Conduit) | Membrane, Conduit |
 
 ---
@@ -451,6 +443,95 @@ Memory Utilization
 
 > **Benchmark hardware:** M3 Max (16-core CPU, 40-core GPU), 128GB unified memory.
 > *Latency includes Intake, Budget, Compress, and Page stages.*
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**1. "budgetExceeded" error**
+
+```swift
+// This error occurs when a bucket's allocation is exceeded
+// Solution: Use a larger budget profile or reduce context
+
+// Instead of:
+let budget = ContextBudget(totalTokens: 4096, profile: .foundationModels4K)
+
+// Consider:
+let budget = ContextBudget(totalTokens: 8192, profile: .openModel8K)
+```
+
+**2. "contextWindowExceeded" error**
+
+```swift
+// This error occurs when total context exceeds model limits
+// The Page stage couldn't evict enough content
+
+// Solution: Increase importance values on critical slices, or:
+// - Reduce history count
+// - Use compression tiers (.gist, .micro) for less critical content
+// - Increase total budget
+```
+
+**3. Tools not being loaded**
+
+```swift
+// JITToolLoader requires at least 10 tools to activate
+// If you have fewer tools, they're loaded in allowAll mode
+
+// Force JIT mode if needed:
+let toolPlan = ToolPlan.jit(
+    normalized: [ToolIndexEntry(...)],
+    loaded: ["tool1", "tool2"]  // Pre-loaded tools
+)
+```
+
+**4. Memory pressure on device**
+
+```swift
+// Configure GQAMemoryEstimator with lower KV budget
+let estimator = GQAMemoryEstimator(
+    architecture: myArchitecture,
+    kvMemoryBudgetBytes: 256 * 1024 * 1024  // 256 MB instead of 512 MB
+)
+```
+
+**5. Non-deterministic output**
+
+```swift
+// Ensure determinism by:
+// 1. Using fixed timestamps (use a consistent clock)
+let fixedTimestamp = Date(timeIntervalSince1970: 0)
+
+// 2. Providing deterministic importance values
+ContextSlice(
+    importance: 0.8,  // Fixed value, not computed
+    // ...
+)
+
+// 3. Using deterministic profiles
+let budget = ContextBudget(totalTokens: 4096, profile: .foundationModels4K)
+```
+
+### Debug Mode
+
+Enable detailed logging to trace pipeline execution:
+
+```swift
+// The pipeline is actor-isolated, so logs should be written
+// from within each stage's process method
+actor StageTrace {
+    private(set) var names: [String] = []
+    private(set) var budgets: [ContextBudget] = []
+
+    func append(name: String, budget: ContextBudget) {
+        names.append(name)
+        budgets.append(budget)
+    }
+}
+```
 
 ---
 
@@ -553,100 +634,7 @@ do {
 
 ---
 
-## Troubleshooting
-
-### Common Issues
-
-**1. "budgetExceeded" error**
-
-```swift
-// This error occurs when a bucket's allocation is exceeded
-// Solution: Use a larger budget profile or reduce context
-
-// Instead of:
-let budget = ContextBudget(totalTokens: 4096, profile: .foundationModels4K)
-
-// Consider:
-let budget = ContextBudget(totalTokens: 8192, profile: .openModel8K)
-```
-
-**2. "contextWindowExceeded" error**
-
-```swift
-// This error occurs when total context exceeds model limits
-// The Page stage couldn't evict enough content
-
-// Solution: Increase importance values on critical slices, or:
-// - Reduce history count
-// - Use compression tiers (.gist, .micro) for less critical content
-// - Increase total budget
-```
-
-**3. Tools not being loaded**
-
-```swift
-// JITToolLoader requires at least 10 tools to activate
-// If you have fewer tools, they're loaded in allowAll mode
-
-// Force JIT mode if needed:
-let toolPlan = ToolPlan.jit(
-    normalized: [ToolIndexEntry(...)],
-    loaded: ["tool1", "tool2"]  // Pre-loaded tools
-)
-```
-
-**4. Memory pressure on device**
-
-```swift
-// Configure GQAMemoryEstimator with lower KV budget
-let estimator = GQAMemoryEstimator(
-    architecture: myArchitecture,
-    kvMemoryBudgetBytes: 256 * 1024 * 1024  // 256 MB instead of 512 MB
-)
-```
-
-**5. Non-deterministic output**
-
-```swift
-// Ensure determinism by:
-// 1. Using fixed timestamps (use a consistent clock)
-let fixedTimestamp = Date(timeIntervalSince1970: 0)
-
-// 2. Providing deterministic importance values
-ContextSlice(
-    importance: 0.8,  // Fixed value, not computed
-    // ...
-)
-
-// 3. Using deterministic profiles
-let budget = ContextBudget(totalTokens: 4096, profile: .foundationModels4K)
-```
-
-### Debug Mode
-
-Enable detailed logging to trace pipeline execution:
-
-```swift
-// The pipeline is actor-isolated, so logs should be written
-// from within each stage's process method
-actor StageTrace {
-    private(set) var names: [String] = []
-    private(set) var budgets: [ContextBudget] = []
-
-    func append(name: String, budget: ContextBudget) {
-        names.append(name)
-        budgets.append(budget)
-    }
-}
-```
-
----
-
 ## Requirements
-
-> **Built for the next generation of Apple platforms.**
->
-> Membrane targets Swift 6.2 and Apple OS versions that unlock the latest on-device AI capabilities. If you're developing for earlier platforms, check the release tags for compatibility branches.
 
 - **Swift:** 6.2+
 - **Platforms:** macOS 26+ / iOS 26+

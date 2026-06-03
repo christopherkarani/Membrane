@@ -59,7 +59,7 @@ public actor RAPTORWaxIndex: RAPTORIndex {
         )
 
         let decodedNodes = results.items.compactMap { item -> (RAPTORNode, Float)? in
-            guard item.text.contains(StorageFormat.nodeMarker) else { return nil }
+            guard item.metadata[MetadataKey.kind] == MetadataKey.nodeKind else { return nil }
             guard let node = Self.decodeNode(from: item.text) else {
                 return nil
             }
@@ -85,7 +85,7 @@ public actor RAPTORWaxIndex: RAPTORIndex {
             nodeID,
             options: .init(topK: 20, includeSurrogates: false, mode: .textOnly)
         )
-        for item in results.items where item.text.hasPrefix(nodeID) {
+        for item in results.items where item.metadata[MetadataKey.nodeID] == nodeID {
             guard let node = Self.decodeNode(from: item.text) else {
                 continue
             }

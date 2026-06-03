@@ -1,10 +1,10 @@
 import Foundation
 import Testing
-@testable import MembraneCheckpoint
+@testable import MembraneHive
 
-@Suite struct MembraneCheckpointBootstrapTests {
+@Suite struct MembraneHiveBootstrapTests {
     @Test func moduleImports() {
-        #expect(MembraneCheckpointAdapter.self is Any.Type)
+        _ = MembraneCheckpointAdapter.self
     }
 
     @Test func checkpointEncodingIsByteStableAcrossEncodes() throws {

@@ -79,8 +79,8 @@ public actor WaxStorageBackend: PointerStore, ContextRecallStore {
             options: .init(topK: 20, includeSurrogates: false, mode: .textOnly)
         )
         guard let item = results.items.first(where: {
-            $0.text.contains("pointer_id: \(pointerID)")
-                && $0.text.contains(StorageFormat.payloadMarker)
+            $0.metadata[MetadataKey.pointerID] == pointerID
+                && $0.metadata[MetadataKey.kind] == MetadataKey.pointerPayloadKind
         }) else {
             throw MembraneError.pointerResolutionFailed(pointerID: pointerID)
         }
@@ -118,7 +118,7 @@ public actor WaxStorageBackend: PointerStore, ContextRecallStore {
         guard includePointerPayloads else {
             return Wax.Memory.Results(
                 query: results.query,
-                items: results.items.filter { !$0.text.contains(StorageFormat.payloadMarker) },
+                items: results.items.filter { $0.metadata[MetadataKey.kind] != MetadataKey.pointerPayloadKind },
                 totalTokens: results.totalTokens
             )
         }
@@ -128,17 +128,14 @@ public actor WaxStorageBackend: PointerStore, ContextRecallStore {
     public func recall(query: String, limit: Int) async throws -> [ContextRecallCandidate] {
         let results = try await searchRAG(query: query, topK: limit, includePointerPayloads: true)
         return results.items.map { item in
-            let kind = item.text.contains(StorageFormat.payloadMarker)
-                ? MetadataKey.pointerPayloadKind
-                : MetadataKey.contextFrame
-            return ContextRecallCandidate(
+            ContextRecallCandidate(
                 content: item.text,
                 score: Double(item.score),
                 provenance: ContextProvenance(
                     backendID: "wax",
                     recordID: String(item.frameId),
-                    kind: kind,
-                    metadata: [:]
+                    kind: item.metadata[MetadataKey.kind] ?? "unknown",
+                    metadata: item.metadata
                 )
             )
         }
@@ -153,17 +150,14 @@ public actor WaxStorageBackend: PointerStore, ContextRecallStore {
             pointerID,
             options: .init(topK: 20, includeSurrogates: false, mode: .textOnly)
         )
-        guard let item = results.items.first(where: {
-            $0.text.contains("pointer_id: \(pointerID)")
-                && $0.text.contains(StorageFormat.payloadMarker)
-        }) else {
+        guard let item = results.items.first(where: { $0.metadata[MetadataKey.pointerID] == pointerID }) else {
             return nil
         }
         return ContextProvenance(
             backendID: "wax",
             recordID: String(item.frameId),
-            kind: MetadataKey.pointerPayloadKind,
-            metadata: [:]
+            kind: item.metadata[MetadataKey.kind] ?? "unknown",
+            metadata: item.metadata
         )
     }
 

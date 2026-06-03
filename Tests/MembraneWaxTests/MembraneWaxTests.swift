@@ -5,7 +5,7 @@ import Testing
 
 @Suite struct MembraneWaxBootstrapTests {
     @Test func moduleImports() {
-        #expect(WaxStorageBackend.self is Any.Type)
+        _ = WaxStorageBackend.self
     }
 
     @Test func pointerPayloadStoredAsBlobWithMembraneMetadata() async throws {
@@ -15,12 +15,12 @@ import Testing
         let backend = try await WaxStorageBackend.create(at: url)
         defer { Task { try? await backend.close() } }
 
-        let payloadText = String(repeating: "payload-", count: 10)
+        let payloadText = String(repeating: "payload-", count: 900)
         let payload = Data(payloadText.utf8)
         let pointer = try await backend.store(
             payload: payload,
             dataType: .binary,
-            summary: "small payload"
+            summary: "oversized payload"
         )
 
         let resolved = try await backend.resolve(pointerID: pointer.id)
@@ -28,7 +28,8 @@ import Testing
 
         #expect(resolved == payload)
         #expect(provenance.kind == "pointerPayload")
-        #expect(provenance.metadata.isEmpty)
+        #expect(provenance.metadata["membrane.pointer.id"] == pointer.id)
+        #expect(provenance.metadata["membrane.pointer.sha256"]?.isEmpty == false)
     }
 
     @Test func ragSearchExcludesPointerPayloadFramesByDefault() async throws {
@@ -40,7 +41,7 @@ import Testing
 
         _ = try await backend.storeContextFrame("shared query normal document")
         _ = try await backend.store(
-            payload: Data(String(repeating: "shared query pointer payload ", count: 5).utf8),
+            payload: Data(String(repeating: "shared query pointer payload ", count: 128).utf8),
             dataType: .document,
             summary: "shared query pointer payload"
         )
@@ -56,8 +57,8 @@ import Testing
             includePointerPayloads: true
         )
 
-        #expect(normalOnly.items.allSatisfy { !$0.text.contains("__payload_base64__") })
-        #expect(withPointers.items.contains { $0.text.contains("__payload_base64__") })
+        #expect(normalOnly.items.allSatisfy { $0.metadata["membrane.kind"] != "pointerPayload" })
+        #expect(withPointers.items.contains { $0.metadata["membrane.kind"] == "pointerPayload" })
     }
 
     @Test func raptorNodesPersistAndRoundTripByNodeID() async throws {

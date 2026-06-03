@@ -12,15 +12,33 @@ var dependencies: [Package.Dependency] = [
 
 if useLocalDeps {
     dependencies += [
+        .package(path: packageRoot.appendingPathComponent("../Hive").path),
         .package(path: packageRoot.appendingPathComponent("../ContextCore").path),
-        .package(path: packageRoot.appendingPathComponent("../Conduit").path),
+        .package(
+            path: packageRoot.appendingPathComponent("../Conduit").path,
+            traits: [
+                .trait(name: "OpenAI"),
+                .trait(name: "OpenRouter"),
+                .trait(name: "Anthropic"),
+            ]
+        ),
         .package(path: packageRoot.appendingPathComponent("../Wax").path),
     ]
 } else {
     dependencies += [
-        .package(url: "https://github.com/christopherkarani/ContextCore.git", from: "0.1.0"),
-        .package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.17"),
-        .package(url: "https://github.com/christopherkarani/Wax.git", from: "0.1.3"),
+        // Keep Hive pinned to Swarm's dependency (avoid mixing local/remote HiveCore in the graph).
+        .package(url: "https://github.com/christopherkarani/Hive", from: "0.1.9"),
+        .package(url: "https://github.com/christopherkarani/ContextCore.git", from: "1.0.0"),
+        .package(
+            url: "https://github.com/christopherkarani/Conduit",
+            from: "0.3.10",
+            traits: [
+                .trait(name: "OpenAI"),
+                .trait(name: "OpenRouter"),
+                .trait(name: "Anthropic"),
+            ]
+        ),
+        .package(url: "https://github.com/christopherkarani/Wax.git", from: "0.1.19"),
     ]
 }
 
@@ -32,7 +50,7 @@ let package = Package(
         .library(name: "Membrane", targets: ["Membrane"]),
         .library(name: "MembraneContextCore", targets: ["MembraneContextCore"]),
         .library(name: "MembraneWax", targets: ["MembraneWax"]),
-        .library(name: "MembraneCheckpoint", targets: ["MembraneCheckpoint"]),
+        .library(name: "MembraneHive", targets: ["MembraneHive"]),
         .library(name: "MembraneConduit", targets: ["MembraneConduit"]),
     ],
     dependencies: dependencies,
@@ -69,9 +87,10 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "MembraneCheckpoint",
+            name: "MembraneHive",
             dependencies: [
                 "Membrane",
+                .product(name: "HiveCore", package: "Hive"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
@@ -79,7 +98,7 @@ let package = Package(
             name: "MembraneConduit",
             dependencies: [
                 "Membrane",
-                .product(name: "Conduit", package: "Conduit"),
+                .product(name: "ConduitAdvanced", package: "Conduit"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
@@ -96,8 +115,8 @@ let package = Package(
             dependencies: ["MembraneWax"]
         ),
         .testTarget(
-            name: "MembraneCheckpointTests",
-            dependencies: ["MembraneCheckpoint"]
+            name: "MembraneHiveTests",
+            dependencies: ["MembraneHive"]
         ),
         .testTarget(
             name: "MembraneConduitTests",

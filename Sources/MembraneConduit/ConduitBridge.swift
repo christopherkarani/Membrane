@@ -1,4 +1,4 @@
-import Conduit
+import ConduitAdvanced
 import MembraneCore
 
 /// Type-erased token accounting wrapper for Conduit-backed counting.

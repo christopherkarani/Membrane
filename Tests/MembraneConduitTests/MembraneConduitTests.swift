@@ -1,11 +1,11 @@
 import Testing
-import Conduit
+import ConduitAdvanced
 @testable import MembraneCore
 @testable import MembraneConduit
 
 @Suite struct MembraneConduitBootstrapTests {
     @Test func moduleImports() {
-        #expect(ConduitTokenAccounting.self is Any.Type)
+        _ = ConduitTokenAccounting.self
     }
 
     @Test func closureBasedTokenAccountingCountsTextAndMessages() async throws {

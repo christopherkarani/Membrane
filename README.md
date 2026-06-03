@@ -416,7 +416,6 @@ Membrane is organized into focused modules:
 | **MembraneCore** | Types, protocols, budget algebra | swift-collections |
 | **Membrane** | Pipeline orchestrator + built-in stages | MembraneCore |
 | **MembraneWax** | Persistent storage via [Wax](https://github.com/christopherkarani/Wax), including RAPTOR index and pointer store | Membrane, Wax |
-| **MembraneHive** | Checkpoint and restore via [Hive](https://github.com/christopherkarani/Hive) | Membrane, HiveCore |
 | **MembraneConduit** | Token counting via [Conduit](https://github.com/christopherkarani/Conduit) | Membrane, Conduit |
 
 ---

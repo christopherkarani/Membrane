@@ -12,7 +12,6 @@ var dependencies: [Package.Dependency] = [
 
 if useLocalDeps {
     dependencies += [
-        .package(path: packageRoot.appendingPathComponent("../Hive").path),
         .package(path: packageRoot.appendingPathComponent("../ContextCore").path),
         .package(
             path: packageRoot.appendingPathComponent("../Conduit").path,
@@ -26,8 +25,6 @@ if useLocalDeps {
     ]
 } else {
     dependencies += [
-        // Keep Hive pinned to Swarm's dependency (avoid mixing local/remote HiveCore in the graph).
-        .package(url: "https://github.com/christopherkarani/Hive", from: "0.2.1"),
         .package(url: "https://github.com/christopherkarani/ContextCore.git", from: "1.0.0"),
         .package(
             url: "https://github.com/christopherkarani/Conduit",
@@ -50,7 +47,6 @@ let package = Package(
         .library(name: "Membrane", targets: ["Membrane"]),
         .library(name: "MembraneContextCore", targets: ["MembraneContextCore"]),
         .library(name: "MembraneWax", targets: ["MembraneWax"]),
-        .library(name: "MembraneHive", targets: ["MembraneHive"]),
         .library(name: "MembraneConduit", targets: ["MembraneConduit"]),
     ],
     dependencies: dependencies,
@@ -87,14 +83,6 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
-            name: "MembraneHive",
-            dependencies: [
-                "Membrane",
-                .product(name: "HiveCore", package: "Hive"),
-            ],
-            swiftSettings: [.swiftLanguageMode(.v6)]
-        ),
-        .target(
             name: "MembraneConduit",
             dependencies: [
                 "Membrane",
@@ -113,10 +101,6 @@ let package = Package(
         .testTarget(
             name: "MembraneWaxTests",
             dependencies: ["MembraneWax"]
-        ),
-        .testTarget(
-            name: "MembraneHiveTests",
-            dependencies: ["MembraneHive"]
         ),
         .testTarget(
             name: "MembraneConduitTests",

@@ -1,5 +1,5 @@
 {
-  "originHash" : "c68d856ec84e90221287a26591b3c1436d391566fa3dd6d60dddb6bf9c7051b5",
+  "originHash" : "65827ee90e0cf457ddfa297e0b274df6f00eb52754b56519b318682203573682",
   "pins" : [
     {
       "identity" : "conduit",
@@ -35,15 +35,6 @@
       "state" : {
         "revision" : "36e30a6f1ef10e4194f6af0cff90888526f0c115",
         "version" : "7.10.0"
-      }
-    },
-    {
-      "identity" : "hive",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/christopherkarani/Hive",
-      "state" : {
-        "revision" : "b1d0d10a1057701a3c1f4ea82234b441c2907242",
-        "version" : "0.2.1"
       }
     },
     {
@@ -116,15 +107,6 @@
       "state" : {
         "revision" : "bbd81b6725ae874c69e9b8c8804d462356b55523",
         "version" : "1.10.1"
-      }
-    },
-    {
-      "identity" : "swift-mutex",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swhitty/swift-mutex.git",
-      "state" : {
-        "revision" : "1770152df756b54c28ef1787df1e957d93cc62d5",
-        "version" : "0.0.6"
       }
     },
     {

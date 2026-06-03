@@ -1,13 +1,13 @@
 {
-  "originHash" : "d518b261959fdfa66a49f0077e342e27eab30eda282d18fc05a50d51518eeff8",
+  "originHash" : "c68d856ec84e90221287a26591b3c1436d391566fa3dd6d60dddb6bf9c7051b5",
   "pins" : [
     {
       "identity" : "conduit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/christopherkarani/Conduit",
       "state" : {
-        "revision" : "61a1b70ae3cdcba7d186b5165d8a946e4a615191",
-        "version" : "0.3.10"
+        "revision" : "c79c68ff17075021ba59c77c439a1d6904a0d3a7",
+        "version" : "0.3.17"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/christopherkarani/Hive",
       "state" : {
-        "revision" : "194d36064ec0ee06653cd4aae51fd3b2ad1b32c3",
-        "version" : "0.1.9"
+        "revision" : "b1d0d10a1057701a3c1f4ea82234b441c2907242",
+        "version" : "0.2.1"
       }
     },
     {
@@ -119,12 +119,30 @@
       }
     },
     {
+      "identity" : "swift-mutex",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swhitty/swift-mutex.git",
+      "state" : {
+        "revision" : "1770152df756b54c28ef1787df1e957d93cc62d5",
+        "version" : "0.0.6"
+      }
+    },
+    {
       "identity" : "swift-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
         "revision" : "558f24a4647193b5a0e2104031b71c55d31ff83a",
         "version" : "2.97.1"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
       }
     },
     {

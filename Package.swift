@@ -27,11 +27,11 @@ if useLocalDeps {
 } else {
     dependencies += [
         // Keep Hive pinned to Swarm's dependency (avoid mixing local/remote HiveCore in the graph).
-        .package(url: "https://github.com/christopherkarani/Hive", from: "0.1.9"),
+        .package(url: "https://github.com/christopherkarani/Hive", from: "0.2.1"),
         .package(url: "https://github.com/christopherkarani/ContextCore.git", from: "1.0.0"),
         .package(
             url: "https://github.com/christopherkarani/Conduit",
-            from: "0.3.10",
+            from: "0.3.17",
             traits: [
                 .trait(name: "OpenAI"),
                 .trait(name: "OpenRouter"),
@@ -98,7 +98,7 @@ let package = Package(
             name: "MembraneConduit",
             dependencies: [
                 "Membrane",
-                .product(name: "ConduitAdvanced", package: "Conduit"),
+                .product(name: "Conduit", package: "Conduit"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

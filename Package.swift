@@ -22,7 +22,7 @@ if useLocalDeps {
 
 let package = Package(
     name: "Membrane",
-    platforms: [.macOS(.v26), .iOS(.v26)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "MembraneCore", targets: ["MembraneCore"]),
         .library(name: "Membrane", targets: ["Membrane"]),
